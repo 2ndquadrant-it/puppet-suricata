@@ -50,6 +50,15 @@ suricata::basic_classification_config:
   - "kickass-porn,SCORE! Get the lotion!,1"
   - "policy-violation,Potential Corporate Privacy Violation,1"
   - "default-login-attempt,Attempt to login by a default username and password,2"
+  - "targeted-activity,Targeted Malicious Activity was Detected,1"
+  - "exploit-kit,Exploit Kit Activity Detected,1"
+  - "external-ip-check,Device Retrieving External IP Address Detected,2"
+  - "domain-c2,Domain Observed Used for C2 Detected,1"
+  - "pup-activity,Possibly Unwanted Program Detected,2"
+  - "credential-theft,Successful Credential Theft Detected,1"
+  - "social-engineering,Possible Social Engineering Attempted,2"
+  - "coin-mining,Crypto Currency Mining Activity Detected,2"
+  - "command-and-control,Malware Command and Control Activity Detected,1"
 
 suricata::basic_reference_config:
   - "bugtraq http://www.securityfocus.com/bid/"
@@ -84,236 +93,184 @@ suricata::basic_main_config:
       DNS_SERVERS: "$HOME_NET"
       TELNET_SERVERS: "$HOME_NET"
       AIM_SERVERS: "$EXTERNAL_NET"
+      DC_SERVERS: "$HOME_NET"
       DNP3_SERVER: "$HOME_NET"
       DNP3_CLIENT: "$HOME_NET"
       MODBUS_CLIENT: "$HOME_NET"
       MODBUS_SERVER: "$HOME_NET"
       ENIP_CLIENT: "$HOME_NET"
       ENIP_SERVER: "$HOME_NET"
-
     port-groups:
       HTTP_PORTS: "80"
       SHELLCODE_PORTS: "!80"
-      ORACLE_PORTS: "1521"
-      SSH_PORTS: "22"
-      DNP3_PORTS: "20000"
-      MODBUS_PORTS: "502"
-
-  default-rule-path: "/etc/suricata/rules"
-  rule-files:
-   - botcc.rules
-   - ciarmy.rules
-   - compromised.rules
-   - drop.rules
-   - dshield.rules
-   - emerging-attack_response.rules
-   - emerging-chat.rules
-   - emerging-current_events.rules
-   - emerging-dns.rules
-   - emerging-dos.rules
-   - emerging-exploit.rules
-   - emerging-ftp.rules
-   - emerging-imap.rules
-   - emerging-malware.rules
-   - emerging-misc.rules
-   - emerging-mobile_malware.rules
-   - emerging-netbios.rules
-   - emerging-p2p.rules
-   - emerging-policy.rules
-   - emerging-pop3.rules
-   - emerging-rpc.rules
-   - emerging-scan.rules
-   - emerging-shellcode.rules
-   - emerging-smtp.rules
-   - emerging-snmp.rules
-   - emerging-sql.rules
-   - emerging-telnet.rules
-   - emerging-tftp.rules
-   - emerging-trojan.rules
-   - emerging-user_agents.rules
-   - emerging-voip.rules
-   - emerging-web_client.rules
-   - emerging-web_server.rules
-   - emerging-worm.rules
-   - tor.rules
-   - http-events.rules    
-   - smtp-events.rules    
-   - dns-events.rules     
-   - tls-events.rules     
-
-  classification-file: "/etc/suricata/classification.config"
-  reference-config-file: "/etc/suricata/reference.config"
-  default-log-dir: "/var/log/suricata"
-
+      ORACLE_PORTS: 1521
+      SSH_PORTS: 22
+      DNP3_PORTS: 20000
+      MODBUS_PORTS: 502
+      FILE_DATA_PORTS: "[$HTTP_PORTS,110,143]"
+      FTP_PORTS: 21
+      VXLAN_PORTS: 4789
+      TEREDO_PORTS: 3544
+  default-log-dir: /var/log/suricata/
   stats:
     enabled: yes
     interval: 8
-  
   outputs:
     - fast:
         enabled: yes
         filename: fast.log
         append: yes
-
     - eve-log:
         enabled: yes
-        filetype: regular 
+        filetype: regular #regular|syslog|unix_dgram|unix_stream|redis
         filename: eve.json
+        pcap-file: false
+        community-id: false
+        community-id-seed: 0
+        xff:
+          enabled: no
+          mode: extra-data
+          deployment: reverse
+          header: X-Forwarded-For
         types:
           - alert:
-              http: yes                
-              tls: yes                 
-              ssh: yes                 
-              smtp: yes                
-              dnp3: yes                
               tagged-packets: yes
-
+          - anomaly:
+              enabled: yes
+              types:
           - http:
-              extended: yes
-
+              extended: yes     # enable this for extended logging information
           - dns:
-              query: yes     
-              answer: yes
-
           - tls:
-              extended: yes
-
+              extended: yes     # enable this for extended logging information
           - files:
-              force-magic: no
-
+              force-magic: no   # force logging magic on all logged files
           - smtp:
+          - ftp
+          - nfs
+          - smb
+          - tftp
+          - ikev2
+          - krb5
+          - snmp
+          - dhcp:
+              enabled: yes
+              extended: no
           - ssh
           - stats:
-              totals: yes
-              threads: no
-              deltas: no
-
+              totals: yes       # stats for all threads merged together
+              threads: no       # per thread stats
+              deltas: no        # include delta values
           - flow
-
+    - unified2-alert:
+        enabled: no
     - http-log:
         enabled: no
         filename: http.log
         append: yes
-
     - tls-log:
-        enabled: no  
-        filename: tls.log
+        enabled: no  # Log TLS connections.
+        filename: tls.log # File to store TLS logs.
         append: yes
-
     - tls-store:
         enabled: no
-
-    - dns-log:
-        enabled: no
-        filename: dns.log
-        append: yes
-
     - pcap-log:
         enabled: no
         filename: log.pcap
         limit: 1000mb
         max-files: 2000
-        mode: normal 
-        use-stream-depth: no 
-        honor-pass-rules: no
-
+        compression: none
+        mode: normal # normal, multi or sguil.
+        use-stream-depth: no #If set to "yes" packets seen after reaching stream inspection depth are ignored. "no" logs all packets
+        honor-pass-rules: no # If set to "yes", flows in which a pass rule matched will stopped being logged.
+    - alert-debug:
+        enabled: no
+        filename: alert-debug.log
+        append: yes
     - alert-prelude:
         enabled: no
         profile: suricata
         log-packet-content: no
         log-packet-header: yes
-
     - stats:
         enabled: yes
         filename: stats.log
-        totals: yes
-        threads: no
-
+        append: yes       # append to file (yes) or overwrite it (no)
+        totals: yes       # stats for all threads merged together
+        threads: no       # per thread stats
     - syslog:
         enabled: no
         facility: local5
-
     - drop:
         enabled: no
-        filename: drop.log
-        append: yes
-
     - file-store:
-        enabled: no       
-        log-dir: files
-        force-magic: no
-        force-filestore: no
-
-    - file-log:
+        version: 2
         enabled: no
-        filename: files-json.log
-        append: yes
-        force-magic: no
-
+        xff:
+          enabled: no
+          mode: extra-data
+          deployment: reverse
+          header: X-Forwarded-For
+    - file-store:
+        enabled: no
     - tcp-data:
         enabled: no
         type: file
         filename: tcp-data.log
-
     - http-body-data:
         enabled: no
         type: file
         filename: http-data.log
-
     - lua:
         enabled: no
         scripts:
-
   logging:
     default-log-level: notice
     default-output-filter:
-
     outputs:
     - console:
         enabled: yes
-
     - file:
         enabled: yes
         level: info
-        filename: /var/log/suricata/suricata.log
-
+        filename: suricata.log
     - syslog:
         enabled: no
         facility: local5
         format: "[%i] <%d> -- "
-
   af-packet:
     - interface: eth0
       cluster-id: 99
       cluster-type: cluster_flow
       defrag: yes
     - interface: default
-
   pcap:
     - interface: eth0
     - interface: default
-
   pcap-file:
     checksum-checks: auto
-
   app-layer:
     protocols:
+      krb5:
+        enabled: yes
+      snmp:
+        enabled: yes
+      ikev2:
+        enabled: yes
       tls:
         enabled: yes
         detection-ports:
           dp: 443
-
       dcerpc:
         enabled: yes
-
       ftp:
         enabled: yes
-
+      rdp:
       ssh:
         enabled: yes
-
       smtp:
         enabled: yes
+        raw-extraction: no
         mime:
           decode-mime: yes
           decode-base64: yes
@@ -321,34 +278,29 @@ suricata::basic_main_config:
           header-value-depth: 2000
           extract-urls: yes
           body-md5: no
-
         inspected-tracker:
           content-limit: 100000
           content-inspect-min-size: 32768
           content-inspect-window: 4096
-
       imap:
         enabled: detection-only
-
-      msn:
-        enabled: detection-only
-
       smb:
         enabled: yes
         detection-ports:
-          dp: 139
-
+          dp: 139, 445
+      nfs:
+        enabled: yes
+      tftp:
+        enabled: yes
       dns:
         tcp:
           enabled: yes
           detection-ports:
             dp: 53
-
         udp:
           enabled: yes
           detection-ports:
             dp: 53
-
       http:
         enabled: yes
         libhtp:
@@ -362,31 +314,47 @@ suricata::basic_main_config:
              response-body-inspect-window: 16kb
              response-body-decompress-layer-limit: 2
              http-body-inline: auto
+             swf-decompression:
+               enabled: yes
+               type: both
+               compress-depth: 0
+               decompress-depth: 0
              double-decode-path: no
              double-decode-query: no
-
            server-config:
-
+      modbus:
+        enabled: no
+        detection-ports:
+          dp: 502
+        stream-depth: 0
+      dnp3:
+        enabled: no
+        detection-ports:
+          dp: 20000
+      enip:
+        enabled: no
+        detection-ports:
+          dp: 44818
+          sp: 44818
+      ntp:
+        enabled: yes
+      dhcp:
+        enabled: yes
+      sip:
   asn1-max-frames: 256
-
   coredump:
     max-dump: unlimited
-
   host-mode: auto
   unix-command:
     enabled: auto
-
   legacy:
     uricontent: enabled
-
   engine-analysis:
     rules-fast-pattern: yes
     rules: yes
-
   pcre:
     match-limit: 3500
     match-limit-recursion: 1500
-
   host-os-policy:
     windows: [0.0.0.0/0]
     bsd: []
@@ -401,26 +369,21 @@ suricata::basic_main_config:
     macos: []
     vista: []
     windows2k3: []
-
   defrag:
     memcap: 32mb
     hash-size: 65536
-    trackers: 65535 
-    max-frags: 65535 
+    trackers: 65535 # number of defragmented flows to follow
+    max-frags: 65535 # number of fragments to keep (higher than trackers)
     prealloc: yes
     timeout: 60
-
   flow:
     memcap: 128mb
     hash-size: 65536
     prealloc: 10000
     emergency-recovery: 30
-
   vlan:
     use-for-tracking: true
-
   flow-timeouts:
-
     default:
       new: 30
       established: 300
@@ -430,7 +393,6 @@ suricata::basic_main_config:
       emergency-established: 100
       emergency-closed: 0
       emergency-bypassed: 50
-
     tcp:
       new: 60
       established: 600
@@ -440,7 +402,6 @@ suricata::basic_main_config:
       emergency-established: 100
       emergency-closed: 10
       emergency-bypassed: 50
-
     udp:
       new: 30
       established: 300
@@ -448,7 +409,6 @@ suricata::basic_main_config:
       emergency-new: 10
       emergency-established: 100
       emergency-bypassed: 50
-
     icmp:
       new: 30
       established: 300
@@ -456,55 +416,54 @@ suricata::basic_main_config:
       emergency-new: 10
       emergency-established: 100
       emergency-bypassed: 50
-
   stream:
     memcap: 64mb
-    checksum-validation: yes
-    inline: auto 
+    checksum-validation: yes      # reject wrong csums
+    inline: auto                  # auto will use inline mode in IPS mode, yes or no set it statically
     reassembly:
       memcap: 256mb
-      depth: 1mb 
+      depth: 1mb                  # reassemble 1mb into a stream
       toserver-chunk-size: 2560
       toclient-chunk-size: 2560
       randomize-chunk-size: yes
-
   host:
     hash-size: 4096
     prealloc: 1000
     memcap: 32mb
-
+  decoder:
+    teredo:
+      enabled: true
+      ports: $TEREDO_PORTS # syntax: '[3544, 1234]' or '3533' or 'any'.
+    vxlan:
+      enabled: true
+      ports: $VXLAN_PORTS # syntax: '8472, 4789'
+    erspan:
+      typeI:
+        enabled: false
   detect:
     profile: medium
     custom-values:
       toclient-groups: 3
       toserver-groups: 25
-
     sgh-mpm-context: auto
     inspection-recursion-limit: 3000
-
     prefilter:
       default: mpm
-
     grouping:
-
     profiling:
       grouping:
         dump-to-disk: false
-        include-rules: false 
+        include-rules: false      # very verbose
         include-mpm-stats: false
-
   mpm-algo: auto
   spm-algo: auto
-  
   threading:
     set-cpu-affinity: no
     cpu-affinity:
       - management-cpu-set:
-          cpu: [ 0 ]  
-
+          cpu: [ 0 ]  # include only these CPUs in affinity settings
       - receive-cpu-set:
-          cpu: [ 0 ]  
-
+          cpu: [ 0 ]  # include only these CPUs in affinity settings
       - worker-cpu-set:
           cpu: [ "all" ]
           mode: "exclusive"
@@ -513,50 +472,44 @@ suricata::basic_main_config:
             medium: [ "1-2" ]
             high: [ 3 ]
             default: "medium"
-
     detect-thread-ratio: 1.0
-
+  luajit:
+    states: 128
   profiling:
     rules:
       enabled: yes
       filename: rule_perf.log
       append: yes
-      sort: avgticks
-      limit: 100
+      limit: 10
       json: yes
-
     keywords:
       enabled: yes
       filename: keyword_perf.log
       append: yes
-
+    prefilter:
+      enabled: yes
+      filename: prefilter_perf.log
+      append: yes
     rulegroups:
       enabled: yes
       filename: rule_group_perf.log
       append: yes
-
     packets:
-
       enabled: yes
       filename: packet_stats.log
       append: yes
-
       csv:
         enabled: no
         filename: packet_stats.csv
-
     locks:
       enabled: no
       filename: lock_stats.log
       append: yes
-
     pcap-log:
       enabled: no
       filename: pcaplog_stats.log
       append: yes
-
   nfq:
-
   nflog:
     - group: 2
       buffer-size: 18432
@@ -564,16 +517,24 @@ suricata::basic_main_config:
       qthreshold: 1
       qtimeout: 100
       max-size: 20000
-
   capture:
-
   netmap:
    - interface: eth2
    - interface: default
-
   pfring:
     - interface: eth0
-      threads: 1
+      threads: auto
       cluster-id: 99
       cluster-type: cluster_flow
     - interface: default
+  ipfw:
+  napatech:
+      streams: ["0-3"]
+      auto-config: yes
+      ports: [all]
+      hashmode: hash5tuplesorted
+  default-rule-path: /var/lib/suricata/rules
+  rule-files:
+    - suricata.rules
+  classification-file: /etc/suricata/classification.config
+  reference-config-file: /etc/suricata/reference.config
